@@ -1,6 +1,6 @@
 # Shutterstock bulk image download
 
-Shutterstock standard licenses do not offer a bulk download option. This is a script using Facebok Webdriver which use Selenium automation to process of downloading all images in a collection
+Shutterstock standard licenses do not offer a bulk download option. This script using Facebok Webdriver which use Selenium automation to process of downloading all images in a collection
 
 ## Prerequisites
 
@@ -27,11 +27,8 @@ php composer.phar install
 * Copy collection ID from url eg 123456
 #### Get subscription ID
 * Click on an image that you haven't previously downloaded
-* You should see a modal window open as below:
-
-
-* Right click on the subscription select element and 'Inspect element'
-* Copy subscription ID eg subscription-{subscriptionId}
+* You should see a modal window open
+* Copy the text for the subscription plan you want to use for all downloads
 
 ### Start selenium server
 ```
@@ -43,7 +40,7 @@ java -jar selenium-server-standalone-3.9.1.jar
 
 ### Run script
 * Copy run.example.php to run.php
-* Add Shutterstock credentials, collection ID and subscription ID
+* Add Shutterstock credentials, collection ID and subscription text
 * Then execute the run script
 ```
 php run.php

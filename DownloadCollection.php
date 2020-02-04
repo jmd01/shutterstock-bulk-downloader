@@ -30,12 +30,17 @@ class DownloadCollection
     /**
      * @var int
      */
-    protected $subscriptionId;
+    protected $subscriptionText;
 
     /**
      * @var string
      */
     protected $csv = '';
+
+    /**
+     * @var int
+     */
+    protected $currentPage = 1;
 
 
     public function __construct($options)
@@ -59,10 +64,10 @@ class DownloadCollection
         } else {
             throw new Exception('collectionId option is required');
         }
-        if (array_key_exists('subscriptionId', $options)) {
-            $this->subscriptionId = $options['subscriptionId'];
+        if (array_key_exists('subscriptionText', $options)) {
+            $this->subscriptionText = $options['subscriptionText'];
         } else {
-            throw new Exception('subscriptionId option is required');
+            throw new Exception('subscriptionText option is required');
         }
 
         $this->driver = RemoteWebDriver::create($host, $capabilities, $connectionTimeout);
@@ -91,65 +96,46 @@ class DownloadCollection
 
     protected function gotoCollectionPage()
     {
-        $this->driver->get('https://www.shutterstock.com/collections/' . $this->collectionId);
+        $this->driver->get('https://www.shutterstock.com/collections/' . $this->collectionId . '?sort=newestFirst&perPage=50&page=' . $this->currentPage);
 
         // wait until the cookie banner is loaded then click accept
-        //$driver->wait(5, 1000)->until(
-        //    WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::id('adroll_consent_accept'))
-        //);
-        // Above not working, go for the ugly option ->>
-        sleep(5);
-        $cookieBanner = $this->driver->findElements(WebDriverBy::id('adroll_consent_accept'));
-        if (count($cookieBanner) > 0) {
-            $cookieBanner[0]->click();
-        }
+//        sleep(5);
+//        $cookieBanner = $this->driver->findElements(WebDriverBy::id('adroll_consent_accept'));
+//        if (count($cookieBanner) > 0) {
+//            $cookieBanner[0]->click();
+//        }
 
     }
 
 
     protected function processPages()
     {
-        $thumbnails = $this->driver->findElements(WebDriverBy::className('thumbnail-gallery'));
-//        var_dump($thumbnails);
+        $thumbnails = $this->driver->findElements(WebDriverBy::cssSelector('a[data-automation="CollectionGrid_item_link"]'));
+
         foreach ($thumbnails as $key => $thumbnail) {
 
             $action = $this->driver->action();
             $action->moveToElement($thumbnail)->perform();
 
-            $thumbnailATag = $thumbnail->findElement(WebDriverBy::className('thumbnail-letterbox'));
-            $original_image_url = $thumbnailATag->getAttribute('href');
+            $original_image_url = $thumbnail->getAttribute('href');
+            $id = $thumbnail->getAttribute('name');
 
-            // Get everything after final slash
-            preg_match("/[^\/]+$/", $original_image_url, $nameFromUrl);
-            $nameFromUrl = $nameFromUrl[0];
-
-            // Get everything after final dash
-            preg_match("/[^-]+$/", $nameFromUrl, $id);
             $svg = 'shutterstock_' . $id[0] . '.svg';
             $original_image = 'shutterstock_' . $id[0] . '.jpg';
 
-            // Get everything before final dash
-            preg_match("/(.*)\-/", $nameFromUrl, $nameWithDashes);
-            // Replace dashes with spaces and upper case first character
-            $name = ucfirst(preg_replace('/-/', ' ', $nameWithDashes[1]));
+
+            $name = $thumbnail->findElement(WebDriverBy::cssSelector('div[data-automation="CollectionGrid_item"]'))->getAttribute('alt');
 
             $this->csv .= "$name,$svg,$original_image,$original_image_url";
 
-            $downloadButton = $thumbnail->findElement(WebDriverBy::className('js-download-button'));
-            $redownloadButton = $thumbnail->findElement(WebDriverBy::className('js-redownload-button'));
+            $downloadButton = $thumbnail->findElement(WebDriverBy::cssSelector('button[data-automation="CollectionGridItemOverlay_download"]'));
 
-            if (!strstr($downloadButton->getAttribute('class'), 'hidden')) {
+            if ($downloadButton->getText() == 'Redownload') {
+                $this->csv .= ",1\r\n";   // Redownload true
+            } else {
                 $this->csv .= ",0\r\n";   // Redownload false
                 $this->newDownload($downloadButton);
-            } else {
-                $this->csv .= ",1\r\n";   // Redownload true
-                //$this->reDownload($redownloadButton);
             }
-
-            $downloadStatusIcon = $thumbnail->findElement(WebDriverBy::className('download-status-icon'));
-            $this->driver->wait(20, 1000)->until(
-                WebDriverExpectedCondition::visibilityOf($downloadStatusIcon)
-            );
 
         }
 
@@ -158,9 +144,9 @@ class DownloadCollection
 
     protected function tryGoToNextPage()
     {
-        $nextPageLink = $this->driver->findElement(WebDriverBy::className('js-pagination-next'));
-        $nextPageLinkParentLi = $nextPageLink->findElement(WebDriverBy::xpath("./.."));
-        if (strstr($nextPageLinkParentLi->getAttribute('class'), 'disabled')) {
+        $nextPageLink = $this->driver->findElement(WebDriverBy::cssSelector('button[data-track-label="nextPage"]'));
+
+        if (strstr($nextPageLink->getAttribute('disabled'), true)) {
             // close the browser
             $this->driver->quit();
         } else {
@@ -172,8 +158,8 @@ class DownloadCollection
 
     protected function goToNextPage()
     {
-        $currentPage = $this->driver->findElement(WebDriverBy::className('pagination-current'))->getAttribute('value');
-        $nextPage = $currentPage + 1 ;
+        $this->currentPage++;
+        $nextPage = $this->currentPage;
         $this->driver->get('https://www.shutterstock.com/collections/' . $this->collectionId . '?sort=newestFirst&perPage=50&page=' . $nextPage);
 
         // wait until the page is loaded
@@ -187,28 +173,18 @@ class DownloadCollection
         $downloadButton->click();
 
         $this->driver->wait(10, 1000)->until(
-            WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::id('download_cta_modal'))
+            WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::xpath("//button[contains(text(),'Confirm download')]"))
         );
-        $modal = $this->driver->findElement(WebDriverBy::id('download_cta_modal'));
-
-        $this->driver->wait(10, 1000)->until(
-            WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::className('js-jpeg-size'))
-        );
-        $modal->findElement(WebDriverBy::className('js-jpeg-size'))->click();
-
-        $downloadForm = $this->driver->findElement(WebDriverBy::className('js-download-form'));
-        $this->driver->wait(10, 1000)->until(
-            WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::className('js-subscription-dropdown-toggle'))
-        );
-        $downloadForm->findElement(WebDriverBy::className('js-subscription-dropdown-toggle'))->click();
-
-        $this->driver->wait(10, 1000)->until(
-            WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::id('subscription-' . $this->subscriptionId))
-        );
-        $downloadForm->findElement(WebDriverBy::id('subscription-' . $this->subscriptionId))->click();
+        $this->driver->findElement(WebDriverBy::xpath("//span[contains(text(),'" . $this->subscriptionText . "')]"))->click();
         sleep(1);
+        $this->driver->findElement(WebDriverBy::xpath("//button[contains(text(),'Confirm download')]"))->click();
 
-        $downloadForm->submit();
+        $this->driver->wait(20, 1000)->until(
+            WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::xpath("//a[contains(text(),'Back to search')]"))
+        );
+        $this->driver->findElement(WebDriverBy::xpath('//span[@data-icon="close"]/parent::button'))->click();
+
+        sleep(2);
 
     }
 
