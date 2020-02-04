@@ -9,7 +9,7 @@ $options = [
     'shutterstockUsername' => 'john.doe@example.com',
     'shutterstockPassword' => 'secret',
     'collectionId' => 123456,
-    'subscriptionId' => 'abcde12345'
+    'subscriptionText' => '365-day Images On Demand, with 5 Standard License Downloads'
 ];
 
 $dc = new DownloadCollection($options);
